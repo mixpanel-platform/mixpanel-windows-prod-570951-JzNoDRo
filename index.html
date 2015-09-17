@@ -1,15 +1,120 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
-    <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
-    <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
-  </head>
-  <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
-    <script>
-      // Run queries and display results here
-    </script>
-  </body>
+<head>
+	<meta charset="utf-8">
+	<link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
+	<link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
+	<script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
+</head>
+<body class="mixpanel-platform-body">
+	<div class="mixpanel-platform-section">
+		<div id="eventSelect" style="float: left;"></div>
+		<div id="by" class="mixpanel-platform-label" style="margin-left: 10px; display: none;">by</div>
+		<div id="propSelect" style="float: left;"></div>
+		<div id="dateSelect" style="float: right;"></div>
+		<div style="clear: both;"></div>
+		<div id="graph"></div>
+	</div>
+	<div id="table"></div>
+	<script>
+	
+	function keyAdd(results, res, version) {
+		for (x in res)
+			results[x + "(" + version + ")"] = res[x];
+	}
+
+	function dateTransformer(obj, dateList, dateListOld) {
+		var newObj = {};
+		for (var i = 0; i < dateList.length; i++)
+		{
+			newObj[dateList[i]] = obj[dateListOld[i]];
+		}
+		return newObj;
+	}
+
+	function getTransformedDay(date) {
+		var day = date.getDate();
+		if (day < 10)
+			return "0" + day;
+		else
+			return day;
+	}
+
+	function getTransformedMonth(date) {
+		var month = date.getMonth() + 1;
+		if (month < 10)
+			return "0" + month;
+		else
+			return month;
+	}
+
+	function dateListMaker(dateList, range, startDate) {
+		var d;
+		for (var i = 0; i < range; i++)
+		{
+			d = new Date(0);
+			d.setUTCSeconds(startDate + (i * 86400));
+			dateList[i] = d.getFullYear() + "-" + getTransformedMonth(d) + "-" + getTransformedDay(d);
+		}
+		return dateList;
+	}
+
+	var eventSelect = $('#eventSelect').MPEventSelect();
+	var propSelect  = $('#propSelect').MPPropertySelect();
+	var dateSelect  = $('#dateSelect').MPDatepicker();
+	var eventGraph  = $('#graph').MPChart({chartType: 'line'});
+	var eventTable  = $('#table').MPTable({
+		showPercentages: true,
+		firstColHeader: 'Event'
+	});
+
+	var runQuery = function() {
+		var eventName = eventSelect.MPEventSelect('value'),
+			propName  = propSelect.MPPropertySelect('value'),
+			dateRange = dateSelect.MPDatepicker('value');
+			from = dateRange['from'].valueOf() / 1000;
+			to = dateRange['to'].valueOf() / 1000;
+			diff = to - from;
+			old = from - diff;
+			range = (diff / 86400) + 1;
+			dateList = [];
+			dateListOld = [];
+
+		dateList = dateListMaker(dateList, range, from);
+		dateListOld = dateListMaker(dateListOld, range, old - 86400);
+		oldFromDate = new Date(0);
+		oldToDate = new Date(0);
+		oldFromDate.setUTCSeconds(old - 86400);
+		oldToDate.setUTCSeconds(from - 86400);
+		var dateRangeOld = {};
+		dateRangeOld['from'] = oldFromDate;
+		dateRangeOld['to'] = oldToDate;
+
+		if (eventName) {
+			var results = {};
+			MP.api.segment(eventName, propName, dateRange).done(function(resultsNow) {
+				keyAdd(results, resultsNow.values(), "current");
+				MP.api.segment(eventName, propName, dateRangeOld).done(function(resultsLast) {
+					var obj = {};
+					var res = resultsLast.values();
+					for (x in res) {
+						obj[x] = dateTransformer(res[x], dateList, dateListOld);
+					}
+					keyAdd(results, obj, "previous");
+					eventGraph.MPChart('setData', results);
+					
+				});
+			});
+		};
+
+	};
+	eventSelect.on('change', function(e, eventName) {
+		propSelect.MPPropertySelect('setEvent', eventName);
+		$("#by").show();
+		runQuery();
+	});
+	propSelect.on('change', runQuery);
+	dateSelect.on('change', runQuery);
+	</script>
+</body>
 </html>
